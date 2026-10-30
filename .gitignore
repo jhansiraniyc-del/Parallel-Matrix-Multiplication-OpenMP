@@ -1,0 +1,16 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Compiled C files
+*.exe
+*.o
+*.dll
+
+# VS Code
+.vscode/
+
+# Temporary files
+*.log

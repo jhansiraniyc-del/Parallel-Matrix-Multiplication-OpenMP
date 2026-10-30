@@ -1,0 +1,321 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OpenMP Matrix Lab</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<header>
+    <div class="brand">⚡ OpenMP Matrix Lab</div>
+    <div class="tag">PARALLEL COMPUTING</div>
+</header>
+
+<main>
+    <section class="hero">
+        <p class="eyebrow">COMPUTATIONAL PERFORMANCE LAB</p>
+        <h1>Matrix multiplication,<br>
+            <span>made parallel.</span>
+        </h1>
+        <p>Explore CPU parallelism with C, OpenMP and interactive
+           performance analysis.</p>
+    </section>
+
+    <section class="panel">
+        <h2>01 / Configure experiment</h2>
+
+        <div class="controls">
+            <label>
+                Matrix size
+                <select id="size">
+                    <option value="2">2 × 2</option>
+                    <option value="3">3 × 3</option>
+                    <option value="4">4 × 4</option>
+                    <option value="10">10 × 10</option>
+                    <option value="50">50 × 50</option>
+                    <option value="100">100 × 100</option>
+                    <option value="300">300 × 300</option>
+                </select>
+            </label>
+
+            <label>
+                OpenMP threads
+                <select id="threads">
+                    <option value="1">1 thread</option>
+                    <option value="2" selected>2 threads</option>
+                    <option value="4">4 threads</option>
+                    <option value="8">8 threads</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="actions">
+            <button class="secondary" onclick="generate()">
+                Generate matrices
+            </button>
+            <button onclick="calculate()">
+                Run experiment →
+            </button>
+        </div>
+
+        <p id="matrixHint" class="hint"></p>
+    </section>
+
+    <section class="panel">
+        <h2>02 / Input matrices</h2>
+
+        <div class="matrix-layout">
+            <div>
+                <h3>Matrix A</h3>
+                <div id="matrixA" class="matrix"></div>
+            </div>
+            <div>
+                <h3>Matrix B</h3>
+                <div id="matrixB" class="matrix"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2>03 / Performance results</h2>
+
+        <div class="metrics">
+            <div class="metric">
+                <span>Sequential time</span>
+                <strong id="seq">—</strong>
+            </div>
+            <div class="metric">
+                <span>Parallel time</span>
+                <strong id="par">—</strong>
+            </div>
+            <div class="metric">
+                <span>Speedup</span>
+                <strong id="speed">—</strong>
+            </div>
+            <div class="metric">
+                <span>Efficiency</span>
+                <strong id="eff">—</strong>
+            </div>
+        </div>
+
+        <h3>Execution time comparison</h3>
+        <div class="chart-wrap">
+            <canvas id="chart"></canvas>
+        </div>
+
+        <h3>Result matrix C = A × B</h3>
+        <div id="result" class="result-grid"></div>
+        <p id="status" class="hint" role="status">
+            Generate matrices to begin.
+        </p>
+    </section>
+</main>
+
+<script>
+let chart = null;
+let AData = [];
+let BData = [];
+
+function randomMatrix(n) {
+    return Array.from({length: n}, () =>
+        Array.from({length: n}, () =>
+            Math.floor(Math.random() * 9) + 1
+        )
+    );
+}
+
+function renderMatrix(id, matrix, editable) {
+    const container = document.getElementById(id);
+    container.innerHTML = "";
+    container.style.gridTemplateColumns =
+        `repeat(${matrix.length}, minmax(0, 1fr))`;
+
+    matrix.forEach((row, i) => {
+        row.forEach((value, j) => {
+            if (editable) {
+                const input = document.createElement("input");
+                input.type = "number";
+                input.step = "any";
+                input.className = "cell";
+                input.value = value;
+                input.setAttribute(
+                    "aria-label",
+                    `${id}, row ${i + 1}, column ${j + 1}`
+                );
+
+                input.addEventListener("change", () => {
+                    const number = Number(input.value);
+
+                    if (input.value.trim() === "" ||
+                        !Number.isFinite(number) ||
+                        Math.abs(number) >= 1e100) {
+                        input.setCustomValidity(
+                            "Enter a finite numeric value."
+                        );
+                    } else {
+                        input.setCustomValidity("");
+                        matrix[i][j] = number;
+                    }
+                });
+
+                container.appendChild(input);
+            } else {
+                const cell = document.createElement("div");
+                cell.className = "result-cell";
+                cell.textContent = value;
+                container.appendChild(cell);
+            }
+        });
+    });
+}
+
+
+function generate() {
+    const n = Number(document.getElementById("size").value);
+    const editable = n <= 10;
+
+    AData = randomMatrix(n);
+    BData = randomMatrix(n);
+
+    const previewA = editable
+        ? AData
+        : AData.slice(0, 6).map(row => row.slice(0, 6));
+
+    const previewB = editable
+        ? BData
+        : BData.slice(0, 6).map(row => row.slice(0, 6));
+
+    renderMatrix("matrixA", previewA, editable);
+    renderMatrix("matrixB", previewB, editable);
+
+    document.getElementById("matrixHint").textContent = editable
+        ? "Edit the matrix values directly in the cells."
+        : "Random matrices generated. Showing the first 6 × 6 values.";
+
+    document.getElementById("result").innerHTML = "";
+    document.getElementById("status").textContent =
+        "Matrices ready. Run the experiment.";
+
+    document.getElementById("seq").textContent = "—";
+    document.getElementById("par").textContent = "—";
+    document.getElementById("speed").textContent = "—";
+    document.getElementById("eff").textContent = "—";
+}
+
+function displayMatrix(id, matrix) {
+    const container = document.getElementById(id);
+    container.innerHTML = "";
+    container.style.gridTemplateColumns =
+        `repeat(${matrix.length}, minmax(0, 1fr))`;
+
+    matrix.forEach(row => row.forEach(value => {
+        const cell = document.createElement("div");
+        cell.className = "result-cell";
+        cell.textContent = Number(value.toFixed(2)).toString();
+        container.appendChild(cell);
+    }));
+}
+
+async function calculate() {
+    const status = document.getElementById("status");
+
+    try {
+        const n = Number(document.getElementById("size").value);
+        const threads = Number(document.getElementById("threads").value);
+
+        if (AData.length !== n || BData.length !== n) {
+            generate();
+        }
+
+        const response = await fetch("/multiply", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                n: n,
+                threads: threads,
+                A: AData,
+                B: BData
+            })
+        });
+
+        status.textContent = "Calculating...";
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Calculation failed.");
+        }
+
+        document.getElementById("seq").textContent =
+            (data.sequential_time * 1000).toFixed(3) + " ms";
+
+        document.getElementById("par").textContent =
+            (data.parallel_time * 1000).toFixed(3) + " ms";
+
+        document.getElementById("speed").textContent =
+            data.speedup === null ? "N/A" :
+            data.speedup.toFixed(2) + "×";
+
+        document.getElementById("eff").textContent =
+            data.efficiency === null ? "N/A" :
+            data.efficiency.toFixed(1) + "%";
+
+        const previewSize = Math.min(n, 10);
+        displayMatrix(
+            "result",
+            data.result.slice(0, previewSize)
+                .map(row => row.slice(0, previewSize))
+        );
+
+        if (chart) chart.destroy();
+
+        chart = new Chart(document.getElementById("chart"), {
+            type: "bar",
+            data: {
+                labels: ["Sequential", "OpenMP Parallel"],
+                datasets: [{
+                    label: "Execution time (ms)",
+                    data: [
+                        data.sequential_time * 1000,
+                        data.parallel_time * 1000
+                    ],
+                    backgroundColor: ["#8b9bb4", "#38bdf8"],
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {beginAtZero: true}
+                },
+                plugins: {
+                    legend: {display: false}
+                }
+            }
+        });
+
+        status.textContent =
+            n > 10
+            ? `Completed. Showing the first ${previewSize} × ${previewSize} ` +
+              "portion of the result matrix."
+            : "Experiment completed successfully.";
+
+    } catch (error) {
+        status.textContent = error.message;
+    }
+}
+
+document.getElementById("size").addEventListener("change", generate);
+generate();
+</script>
+
+</body>
+</html>
